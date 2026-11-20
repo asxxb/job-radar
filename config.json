@@ -1,10 +1,76 @@
 {
-  "port": 3000,
+  "port": 3001,
   "pollMinutes": 10,
-  "keywords": ["software engineer", "backend", "full stack", "node"],
-  "exclude": ["intern", "senior director"],
+  "keywords": [
+    "software engineer",
+    "react",
+    "react native",
+    "frontend",
+    "backend",
+    "it developer",
+    "software developer",
+    "full stack",
+    "web developer",
+    "node",
+    "php",
+    "laravel"
+  ],
+  "exclude": [
+    "intern",
+    "senior director"
+  ],
   "remote": true,
-  "localMatch": ["your-country", "your-city"],
-  "localLocation": "Your City, Your Country",
-  "disabledSources": []
+  "localMatch": [
+    "india",
+    "bengaluru",
+    "bangalore",
+    "mumbai",
+    "delhi",
+    "hyderabad",
+    "chennai",
+    "pune",
+    "gurgaon",
+    "gurugram",
+    "noida",
+    "kolkata",
+    "saudi",
+    "ksa",
+    "riyadh",
+    "jeddah",
+    "dammam",
+    "khobar",
+    "makkah",
+    "mecca",
+    "medina",
+    "neom"
+  ],
+  "localLocation": [
+    "India",
+    "Saudi Arabia"
+  ],
+  "disabledSources": [
+    "jsearch"
+  ],
+  "companies": {
+    "greenhouse": [
+      "stripe"
+    ],
+    "lever": [
+      "palantir"
+    ]
+  },
+  "skills": {
+    "node": 3,
+    "typescript": 2,
+    "aws": 2,
+    "react": 1,
+    "php": 2,
+    "laravel": 2,
+    "mysql": 1,
+    "html": 1
+  },
+  "minScore": 0,
+  "companyJobs": [],
+  "companyJobsMonthlyMax": 90,
+  "companyJobsDays": 7
 }

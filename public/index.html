@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Job Radar</title>
+<style>
+:root{--bg:#eef1f6;--card:#fff;--tx:#18202e;--mu:#5f6b7f;--bd:#d9dfea;--ac:#3b4cca;--new:#e58a00}
+@media(prefers-color-scheme:dark){:root{--bg:#10141d;--card:#181e2b;--tx:#e6eaf3;--mu:#8e9ab0;--bd:#28314a;--ac:#8c9bff;--new:#ffb340}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.5 "Avenir Next","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 20px;background:var(--bg);border-bottom:1px solid var(--bd)}
+h1{font-size:18px;margin:0 8px 0 0}
+button,select,input{font:inherit;color:inherit;background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:6px 10px}
+button{cursor:pointer}button:hover{border-color:var(--ac)}
+button.on{background:var(--ac);border-color:var(--ac);color:var(--bg)}
+:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+input{flex:1;min-width:160px}
+main{max-width:980px;margin:0 auto;padding:16px 20px}
+.job{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:10px;display:flex;gap:12px;justify-content:space-between}
+.job.new{border-left:4px solid var(--new)}
+.job h3{margin:0;font-size:16px}.job a{color:var(--tx);text-decoration:none}.job a:hover{color:var(--ac)}
+.meta{color:var(--mu);font-size:13px}.desc{color:var(--mu);font-size:13px;margin-top:4px;max-width:70ch}
+.act{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.board{display:grid;grid-template-columns:repeat(5,minmax(190px,1fr));gap:10px;overflow-x:auto}
+.col{background:color-mix(in srgb,var(--card) 60%,transparent);border:1px solid var(--bd);border-radius:8px;padding:8px;min-height:200px}
+.col h2{font-size:14px;margin:2px 4px 8px;text-transform:capitalize}
+.tcard{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:8px;margin-bottom:8px;font-size:13px}
+.tcard select{width:100%;margin-top:6px;padding:3px}.note{color:var(--mu);margin-top:4px}
+.empty{color:var(--mu);padding:30px;text-align:center}
+@media(max-width:640px){.job{flex-direction:column}.act{flex-direction:row}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Job Radar</h1>
+  <button id="tJobs" class="on">Jobs</button>
+  <button id="tTrack">Tracker</button>
+  <button id="tUsage">Usage</button>
+  <input id="q" type="search" placeholder="Filter by title, company, location">
+  <select id="kind"><option value="">All locations</option><option value="remote">Remote</option><option value="india">India</option><option value="saudi">Saudi Arabia</option></select>
+  <select id="when" title="Posted"><option value="24">Last 24 hours</option><option value="72" selected>Last 3 days</option></select>
+  <select id="sort" title="Sort by"><option value="new">Most recent</option><option value="best">Best match</option><option value="old">Oldest</option></select>
+  <button id="notify">Enable alerts</button>
+</header>
+<main id="app"></main>
+<div id="usage" class="meta" style="text-align:center;padding:0 20px 8px"></div>
+<footer style="text-align:center;color:var(--mu);font-size:12px;padding:20px">Listings from <a href="https://remotejobs.org" style="color:inherit">RemoteJobs.org</a>, <a href="https://himalayas.app" style="color:inherit">Himalayas</a>, <a href="https://jobicy.com" style="color:inherit">Jobicy</a>, Remotive, RemoteOK, Arbeitnow and company career pages.</footer>
+<script>
+const $ = s => document.querySelector(s);
+const STATUS = ['saved','applied','interview','offer','rejected'];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let jobs = [], track = [], view = 'jobs';
+const fresh = new Set();
+let keyInfo = null, keyDraft = '', keyMsg = '';
+let usage = null;
+const PLACES = {
+  india: /india|bengaluru|bangalore|mumbai|delhi|hyderabad|chennai|pune|gurgaon|gurugram|noida|kolkata|ahmedabad/i,
+  saudi: /saudi|\bksa\b|riyadh|jeddah|dammam|khobar|mecca|makkah|medina|madinah|neom|jubail/i,
+};
+const inPlace = (j, k) => k === 'remote' ? !!j.remote : PLACES[k].test(j.location || '');
+const postedTs = j => { const t = Date.parse(j.posted); return Number.isFinite(t) && t < Date.now() + 864e5 ? t : j.found; };
+const fmtDate = t => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const SORTS = { new: (a, b) => postedTs(b) - postedTs(a), old: (a, b) => postedTs(a) - postedTs(b), best: (a, b) => (b.score || 0) - (a.score || 0) || postedTs(b) - postedTs(a) };
+
+async function api(path, method = 'GET', body) {
+  const r = await fetch('/api/' + path, { method, headers: {'Content-Type':'application/json'}, body: body && JSON.stringify(body) });
+  return r.status === 204 ? null : r.json();
+}
+async function loadUsage() {
+  try {
+    const u = usage = await api('usage'); keyInfo = await api('settings'); if (view === 'usage') render();
+    const left = t => { const m = Math.round((t - Date.now()) / 6e4); return m <= 0 ? 'due now' : m < 120 ? `in ${m}m` : `in ${Math.round(m / 60)}h`; };
+    $('#usage').textContent = `LinkedIn API: ${u.linkedin.used}/${u.linkedin.max} requests this month, next run ${left(u.linkedin.next)}. JSearch: ${u.jsearch.used} requests counted this month, next run ${left(u.jsearch.next)}.`;
+  } catch {}
+}
+async function load() { [jobs, track] = await Promise.all([api('jobs'), api('tracker')]); render(); loadUsage(); }
+async function setStatus(id, status) { await api('tracker', 'POST', { id, status }); load(); }
+async function note(id) { const n = prompt('Notes'); if (n !== null) { await api('tracker', 'POST', { id, notes: n }); load(); } }
+async function drop(id) { await api('tracker/' + id, 'DELETE'); load(); }
+const ago = t => { const h = (Date.now() - t) / 36e5; return h < 1 ? Math.max(1, Math.round(h * 60)) + 'm ago' : h < 48 ? Math.round(h) + 'h ago' : Math.round(h / 24) + 'd ago'; };
+
+function render() {
+  $('#tJobs').classList.toggle('on', view === 'jobs');
+  $('#tTrack').classList.toggle('on', view === 'track');
+  $('#tUsage').classList.toggle('on', view === 'usage');
+  $('#app').innerHTML = view === 'jobs' ? renderJobs() : view === 'usage' ? renderUsage() : renderBoard();
+}
+function renderJobs() {
+  const q = $('#q').value.toLowerCase(), k = $('#kind').value, w = +$('#when').value, tracked = new Set(track.map(t => t.id));
+  const list = jobs.filter(j => (!q || `${j.title} ${j.company} ${j.location}`.toLowerCase().includes(q)) && (!k || inPlace(j, k)) && (Date.now() - postedTs(j) <= (w || 72) * 36e5));
+  if (!list.length) return '<p class="empty">No jobs yet. The first poll can take a few seconds. Check your keywords in config.json.</p>';
+  return [...list].sort(SORTS[$('#sort').value]).slice(0, 200).map(j => `
+    <article class="job ${fresh.has(j.id) ? 'new' : ''}">
+      <div>
+        <h3><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></h3>
+        <div class="meta">${esc(j.company)}, ${esc(j.location || 'n/a')}, ${j.remote ? 'remote' : 'on-site'}, score ${j.score ?? 0}, posted ${fmtDate(postedTs(j))} (${ago(postedTs(j))}) via ${esc(j.source)}</div>
+        <div class="desc">${esc(j.desc)}</div>
+      </div>
+      <div class="act">${tracked.has(j.id) ? '<span class="meta">In tracker</span>' : `<button onclick="setStatus('${j.id}','saved')">Save</button><button onclick="setStatus('${j.id}','applied')">Mark applied</button>`}</div>
+    </article>`).join('');
+}
+const keyCard = () => `<div class="job" style="display:block"><h3>RapidAPI key</h3>
+  <div class="meta">${keyInfo && keyInfo.set ? 'Current key ends in ' + esc(keyInfo.hint) : 'No key set'}. It is stored on the server and never shown again.</div>
+  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input type="password" autocomplete="off" placeholder="Paste new key" value="${esc(keyDraft)}" oninput="keyDraft=this.value">
+  <button onclick="saveKey()">Save</button><button onclick="testKey()">Test</button></div>
+  <div class="meta" style="margin-top:6px">${esc(keyMsg)}</div></div>`;
+async function saveKey() {
+  keyMsg = 'Saving...'; render();
+  const r = await api('settings', 'POST', { rapidapiKey: keyDraft });
+  if (r && r.error) keyMsg = r.error; else { keyInfo = r; keyDraft = ''; keyMsg = 'Saved. The new key is active now. Click Test to check it.'; }
+  render();
+}
+async function testKey() {
+  keyMsg = 'Testing, this can take up to 30 seconds...'; render();
+  const r = await api('settings/test', 'POST', {});
+  keyMsg = r.status === 200 ? 'Key works (status 200).' : r.status === 403 || r.status === 401 ? 'Rejected (status ' + r.status + '): wrong key, or this key is not subscribed to the Company Jobs API.' : r.status === 429 ? 'Key is valid but over a rate limit (429).' : 'Test failed (' + (r.status || 'no response') + ').';
+  render();
+}
+function renderUsage() {
+  if (!usage) return '<p class="empty">Loading usage...</p>';
+  const u = usage;
+  const left = t => { const m = Math.round((t - Date.now()) / 6e4); return m <= 0 ? 'due now' : m < 120 ? `in ${m}m` : `in ${Math.round(m / 60)}h`; };
+  const bar = (n, max) => `<div style="height:8px;background:var(--bd);border-radius:4px;margin:8px 0"><div style="height:8px;width:${Math.min(100, n / max * 100)}%;background:${n / max > .85 ? 'var(--new)' : 'var(--ac)'};border-radius:4px"></div></div>`;
+  const hdrs = h => h ? Object.entries(h).filter(([k]) => k !== 'at').map(([k, v]) => `<div class="meta">RapidAPI ${esc(k.replace(/^x-ratelimit-/i, ''))}: ${esc(v)}</div>`).join('') : '<div class="meta">RapidAPI limit headers appear after the next call.</div>';
+  const card = (t, b) => `<div class="job" style="display:block"><h3>${t}</h3>${b}</div>`;
+  const rows = Object.entries(u.sources || {}).sort().map(([n, s]) => `<tr><td>${esc(n)}</td><td>${s.ok ? 'ok' : 'FAILED'}</td><td>${s.ok ? s.fetched : esc(s.error)}</td><td>${(u.stored || {})[n] || 0}</td><td>${ago(s.at)}</td></tr>`).join('');
+  return card('LinkedIn API (RapidAPI)', `${bar(u.linkedin.used, u.linkedin.max)}<div class="meta">${u.linkedin.used} of ${u.linkedin.max} requests used this month, next run ${left(u.linkedin.next)}</div>${hdrs((u.rate || {})['linkedin-job-search-api.p.rapidapi.com'])}`)
+    + card('JSearch (RapidAPI)', `<div class="meta">${u.jsearch.used} requests counted since tracking began this month, next run ${left(u.jsearch.next)}</div>${hdrs((u.rate || {})['jsearch.p.rapidapi.com'])}`)
+    + keyCard()
+    + card('Company Jobs API (RapidAPI)', `${bar((u.companyjobs || {}).used || 0, (u.companyjobs || {}).max || 90)}<div class='meta'>${(u.companyjobs || {}).used || 0} of ${(u.companyjobs || {}).max || 90} results used this month</div>${hdrs((u.rate || {})['company-jobs-api5.p.rapidapi.com'])}`)
+    + card(`Sources (${u.total} jobs stored)`, `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="text-align:left;color:var(--mu)"><th>Source</th><th>Last poll</th><th>Fetched / error</th><th>Stored</th><th>When</th></tr>${rows}</table></div>`);
+}
+function renderBoard() {
+  return `<div class="board">${STATUS.map(s => `
+    <section class="col"><h2>${s} (${track.filter(t => t.status === s).length})</h2>
+    ${track.filter(t => t.status === s).sort((a, b) => b.updated - a.updated).map(t => `
+      <div class="tcard"><a href="${esc(t.url)}" target="_blank" rel="noopener"><b>${esc(t.title)}</b></a>
+        <div class="meta">${esc(t.company)}, posted ${fmtDate(postedTs(t))}</div>
+        ${t.notes ? `<div class="note">${esc(t.notes)}</div>` : ''}
+        <select onchange="setStatus('${t.id}',this.value)">${STATUS.map(x => `<option ${x === t.status ? 'selected' : ''}>${x}</option>`).join('')}</select>
+        <div style="margin-top:6px;display:flex;gap:6px"><button onclick="note('${t.id}')">Notes</button><button onclick="drop('${t.id}')">Remove</button></div>
+      </div>`).join('')}
+    </section>`).join('')}</div>`;
+}
+
+$('#tJobs').onclick = () => { view = 'jobs'; render(); };
+$('#tTrack').onclick = () => { view = 'track'; render(); };
+$('#tUsage').onclick = () => { view = 'usage'; loadUsage(); render(); };
+$('#q').oninput = $('#kind').onchange = $('#when').onchange = $('#sort').onchange = () => view === 'jobs' && render();
+$('#notify').onclick = () => Notification.requestPermission().then(p => $('#notify').textContent = p === 'granted' ? 'Alerts on' : 'Alerts blocked');
+
+new EventSource('/api/stream').onmessage = e => {
+  const j = JSON.parse(e.data);
+  jobs.unshift(j); fresh.add(j.id);
+  if (Notification.permission === 'granted') new Notification(j.title, { body: j.company });
+  render();
+};
+load();
+</script>
+</body>
+</html>
