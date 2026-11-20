@@ -113,6 +113,17 @@ const sources = {
   },
 };
 
+// Highest minimum years of experience a posting asks for (null if it does not say)
+const expYears = text => {
+  let max = null;
+  for (const m of text.matchAll(/\b(\d{1,2})\s*\+?\s*(?:(?:-|\u2013|to)\s*\d{1,2}\s*\+?\s*)?(?:years?|yrs?)\b/gi)) {
+    const around = text.slice(Math.max(0, m.index - 60), m.index + m[0].length + 60);
+    if (!/experience|exp\./i.test(around)) continue;
+    if (max === null || +m[1] > max) max = +m[1];
+  }
+  return max;
+};
+
 const has = (s, list) => list.some(k => s.includes(k.toLowerCase()));
 const match = j => {
   if (!j.url || !j.title) return false;
@@ -121,6 +132,7 @@ const match = j => {
   const title = j.title.toLowerCase(), text = `${title} ${j.desc}`.toLowerCase(), loc = (j.location || '').toLowerCase();
   if (!has(text, cfg.keywords) || has(title, cfg.exclude)) return false;
   if ((j.score ?? 0) < (cfg.minScore || 0)) return false;
+  if (j.exp != null && j.exp > (cfg.maxExperience ?? Infinity)) return false;
   return (cfg.remote && j.remote) || has(loc, cfg.localMatch);
 };
 
@@ -145,6 +157,7 @@ async function poll() {
       for (const raw of rows) {
         const j = norm(name, raw);
         j.score = score({ title: raw.title, desc: clean(raw.desc) }, cfg);
+        j.exp = expYears(`${raw.title || ''} ${clean(raw.desc)}`);
         if (!seen.has(j.id) && match(j)) { seen.add(j.id); fresh.push(j); }
       }
     } catch (e) { console.log(`[${name}] failed: ${e.message}`); srcStatus[name] = { ok: false, error: e.message, at: Date.now() }; }

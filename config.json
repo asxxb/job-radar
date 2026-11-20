@@ -72,5 +72,6 @@
   "minScore": 0,
   "companyJobs": [],
   "companyJobsMonthlyMax": 90,
-  "companyJobsDays": 7
+  "companyJobsDays": 7,
+  "maxExperience": 5
 }

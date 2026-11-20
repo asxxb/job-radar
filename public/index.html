@@ -94,7 +94,7 @@ function renderJobs() {
     <article class="job ${fresh.has(j.id) ? 'new' : ''}">
       <div>
         <h3><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></h3>
-        <div class="meta">${esc(j.company)}, ${esc(j.location || 'n/a')}, ${j.remote ? 'remote' : 'on-site'}, score ${j.score ?? 0}, posted ${fmtDate(postedTs(j))} (${ago(postedTs(j))}) via ${esc(j.source)}</div>
+        <div class="meta">${esc(j.company)}, ${esc(j.location || 'n/a')}, ${j.remote ? 'remote' : 'on-site'}, score ${j.score ?? 0}${j.exp != null ? ', ' + j.exp + '+ yrs exp' : ''}, posted ${fmtDate(postedTs(j))} (${ago(postedTs(j))}) via ${esc(j.source)}</div>
         <div class="desc">${esc(j.desc)}</div>
       </div>
       <div class="act">${tracked.has(j.id) ? '<span class="meta">In tracker</span>' : `<button onclick="setStatus('${j.id}','saved')">Save</button><button onclick="setStatus('${j.id}','applied')">Mark applied</button>`}</div>
