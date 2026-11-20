@@ -38,7 +38,7 @@ main{max-width:980px;margin:0 auto;padding:16px 20px}
   <button id="tTrack">Tracker</button>
   <button id="tUsage">Usage</button>
   <input id="q" type="search" placeholder="Filter by title, company, location">
-  <select id="kind"><option value="">All locations</option><option value="remote">Remote</option><option value="india">India</option><option value="saudi">Saudi Arabia</option></select>
+  <select id="kind"><option value="">All (Remote + India + Saudi Arabia)</option><option value="remote">Remote</option><option value="india">India</option><option value="saudi">Saudi Arabia</option></select>
   <select id="when" title="Posted"><option value="24">Last 24 hours</option><option value="72" selected>Last 3 days</option></select>
   <select id="sort" title="Sort by"><option value="new">Most recent</option><option value="best">Best match</option><option value="old">Oldest</option></select>
   <button id="notify">Enable alerts</button>
@@ -88,7 +88,7 @@ function render() {
 }
 function renderJobs() {
   const q = $('#q').value.toLowerCase(), k = $('#kind').value, w = +$('#when').value, tracked = new Set(track.map(t => t.id));
-  const list = jobs.filter(j => (!q || `${j.title} ${j.company} ${j.location}`.toLowerCase().includes(q)) && (!k || inPlace(j, k)) && (Date.now() - postedTs(j) <= (w || 72) * 36e5));
+  const list = jobs.filter(j => (!q || `${j.title} ${j.company} ${j.location}`.toLowerCase().includes(q)) && (k ? inPlace(j, k) : (j.remote || inPlace(j, "india") || inPlace(j, "saudi"))) && (Date.now() - postedTs(j) <= (w || 72) * 36e5));
   if (!list.length) return '<p class="empty">No jobs yet. The first poll can take a few seconds. Check your keywords in config.json.</p>';
   return [...list].sort(SORTS[$('#sort').value]).slice(0, 200).map(j => `
     <article class="job ${fresh.has(j.id) ? 'new' : ''}">
